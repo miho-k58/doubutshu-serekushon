@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>どうぶつ とうひょう</title>
+  <style>
+    body { margin: 0; padding: 16px; font-family: sans-serif; background: #fff; }
+    .animal-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 1.25rem 0; }
+    .animal-card { background: #fff; border: 1px solid #ddd; border-radius: 12px; padding: 1.1rem 0.75rem; text-align: center; cursor: pointer; user-select: none; }
+    .animal-card:active { transform: scale(0.97); }
+    .animal-card.winner { border: 2px solid #1D9E75; background: #E1F5EE; }
+    .animal-card.bounce { animation: bonce 0.28s ease; }
+    @keyframes bonce { 0%{transform:scale(1)} 45%{transform:scale(1.13)} 100%{transform:scale(1)} }
+    .animal-emoji { font-size: 48px; display: block; margin-bottom: 6px; line-height: 1; }
+    .animal-name { font-size: 16px; font-weight: 500; color: #111; }
+    .cry { font-size: 12px; color: #888; margin-top: 2px; }
+    .bar-wrap { background: #f0f0f0; border-radius: 4px; height: 9px; margin: 8px 0 3px; overflow: hidden; }
+    .bar { height: 9px; border-radius: 4px; background: #1D9E75; transition: width 0.5s ease; }
+    .vote-count { font-size: 12px; color: #888; }
+    .header { text-align: center; padding: 1rem 0 0; }
+    .header h2 { font-size: 20px; font-weight: 500; margin: 0 0 6px; color: #111; }
+    .person-row { display: flex; justify-content: center; gap: 7px; margin: 10px 0 0; flex-wrap: wrap; }
+    .dot { width: 28px; height: 28px; border-radius: 50%; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; color: #888; background: #fff; }
+    .dot.done { background: #1D9E75; color: #fff; border-color: #1D9E75; }
+    .dot.current { background: #FAC775; border-color: #BA7517; color: #412402; }
+    .turn-label { text-align: center; font-size: 15px; color: #111; margin: 10px 0 0; font-weight: 500; }
+    .sub-label { text-align: center; font-size: 13px; color: #888; margin: 3px 0 0; }
+    .winner-banner { text-align: center; padding: 0.8rem 1rem; background: #E1F5EE; border-radius: 8px; border: 1px solid #5DCAA5; font-size: 15px; color: #0F6E56; margin: 0.75rem 0; }
+    .total-badge { display: inline-block; background: #f5f5f5; border: 1px solid #ddd; border-radius: 999px; padding: 3px 14px; font-size: 13px; color: #888; }
+    .reset-btn { display: block; margin: 1rem auto 0; font-size: 13px; padding: 6px 18px; color: #888; border: 1px solid #ddd; border-radius: 8px; background: #fff; cursor: pointer; }
+    .reset-btn:hover { background: #f5f5f5; }
+    .finished-msg { text-align: center; font-size: 16px; font-weight: 500; color: #111; margin: 0.5rem 0 1rem; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h2>好きな動物はどれ？</h2>
+  <div class="person-row" id="person-row"></div>
+  <div class="turn-label" id="turn-label"></div>
+  <div class="sub-label" id="sub-label"></div>
+</div>
+
+<div class="animal-grid" id="grid"></div>
+
+<div id="winner-banner" style="display:none;"></div>
+<div id="finished-msg" style="display:none;" class="finished-msg"></div>
+<div style="text-align:center; margin-top:4px;">
+  <span class="total-badge" id="total-label">0 票</span>
+</div>
+<button class="reset-btn" id="reset-btn">リセット</button>
+
+<script>
+const TOTAL = 6;
+const animals = [
+  { name: "いぬ",   emoji: "🐶", cry: "ワンワン！" },
+  { name: "パンダ", emoji: "🐼", cry: "キューキュー！" },
+  { name: "ねこ",   emoji: "🐱", cry: "ニャーニャー！" },
+];
+
+let votes = [0,0,0];
+let current = 0;
+let ctx = null;
+
+function getCtx() { if(!ctx) ctx=new(window.AudioContext||window.webkitAudioContext)(); return ctx; }
+function playDog() {
+  const c=getCtx(),t=c.currentTime;
+  [0,0.18].forEach(off=>{const o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.type="sawtooth";o.frequency.setValueAtTime(220,t+off);o.frequency.exponentialRampToValueAtTime(130,t+off+0.1);g.gain.setValueAtTime(0.4,t+off);g.gain.exponentialRampToValueAtTime(0.001,t+off+0.13);o.start(t+off);o.stop(t+off+0.15);});
+}
+function playPanda() {
+  const c=getCtx(),t=c.currentTime,o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.type="sine";o.frequency.setValueAtTime(500,t);o.frequency.exponentialRampToValueAtTime(350,t+0.25);o.frequency.exponentialRampToValueAtTime(480,t+0.45);g.gain.setValueAtTime(0.3,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.5);o.start(t);o.stop(t+0.5);
+}
+function playCat() {
+  const c=getCtx(),t=c.currentTime,o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.type="sine";o.frequency.setValueAtTime(700,t);o.frequency.exponentialRampToValueAtTime(900,t+0.1);o.frequency.exponentialRampToValueAtTime(600,t+0.35);g.gain.setValueAtTime(0.35,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.4);o.start(t);o.stop(t+0.4);
+}
+const soundFns=[playDog,playPanda,playCat];
+
+const grid=document.getElementById("grid");
+const totalLabel=document.getElementById("total-label");
+const winnerBanner=document.getElementById("winner-banner");
+const finishedMsg=document.getElementById("finished-msg");
+const turnLabel=document.getElementById("turn-label");
+const subLabel=document.getElementById("sub-label");
+const personRow=document.getElementById("person-row");
+
+const done=()=>current>=TOTAL;
+function totalVotes(){return votes.reduce((a,b)=>a+b,0);}
+
+function renderDots(){
+  personRow.innerHTML="";
+  for(let i=0;i<TOTAL;i++){
+    const d=document.createElement("div");
+    d.className="dot"+(i<current?" done":i===current?" current":"");
+    d.textContent=i<current?"✓":(i+1);
+    personRow.appendChild(d);
+  }
+}
+
+function render(){
+  const total=totalVotes();
+  const max=Math.max(...votes);
+  const finished=done();
+  renderDots();
+  if(!finished){
+    turnLabel.textContent=`${current+1}にんめ の ばん`;
+    subLabel.textContent="すきな どうぶつを タップ！";
+  } else {
+    turnLabel.textContent="";
+    subLabel.textContent="";
+  }
+  grid.innerHTML="";
+  animals.forEach((a,i)=>{
+    const pct=total>0?Math.round(votes[i]/total*100):0;
+    const isWin=finished&&votes[i]===max&&max>0;
+    const card=document.createElement("div");
+    card.className="animal-card"+(isWin?" winner":"");
+    card.innerHTML=`
+      <span class="animal-emoji">${a.emoji}</span>
+      <div class="animal-name">${a.name}${isWin?" 👑":""}</div>
+      <div class="cry">${a.cry}</div>
+      ${total>0?`<div class="bar-wrap"><div class="bar" style="width:${pct}%"></div></div><div class="vote-count">${votes[i]}票（${pct}%）</div>`:""}
+    `;
+    card.addEventListener("click",()=>{
+      soundFns[i]();
+      card.classList.add("bounce");
+      setTimeout(()=>card.classList.remove("bounce"),300);
+      if(!finished){ votes[i]++; current++; render(); }
+    });
+    grid.appendChild(card);
+  });
+  totalLabel.textContent=`ぜんぶで ${total} 票`;
+  if(finished&&total>0){
+    const winIdx=votes.indexOf(max);
+    winnerBanner.style.display="block";
+    winnerBanner.innerHTML=`👑 <strong>${animals[winIdx].name}</strong> が いちばん にんきです！（${max}票）`;
+    finishedMsg.style.display="block";
+    finishedMsg.textContent="6にん ぜんいん とうひょう おわり！";
+  } else {
+    winnerBanner.style.display="none";
+    finishedMsg.style.display="none";
+  }
+}
+
+document.getElementById("reset-btn").addEventListener("click",()=>{
+  votes=[0,0,0]; current=0; render();
+});
+
+render();
+</script>
+</body>
+</html>
